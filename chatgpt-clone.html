@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>本地 AI 助理</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0f12;
+      --sidebar: #101418;
+      --surface: #161b22;
+      --surface2: #1e242d;
+      --border: #2a313c;
+      --accent: #58a6ff;
+      --accent2: #3fb950;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --user-bubble: #1f3a5f;
+      --danger: #f85149;
+      --radius: 14px;
+      --font: 'Sora', sans-serif;
+      --mono: 'JetBrains Mono', monospace;
+      --sidebar-w: 260px;
+    }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
+    body::before {
+      content: ''; position: fixed; inset: 0;
+      background-image: linear-gradient(rgba(88,166,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(88,166,255,0.025) 1px, transparent 1px);
+      background-size: 40px 40px; pointer-events: none; z-index: 0;
+    }
+
+    /* ── Sidebar ── */
+    #sidebar { width: var(--sidebar-w); background: var(--sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; z-index: 20; }
+    .sidebar-header { padding: 16px 14px 12px; border-bottom: 1px solid var(--border); }
+    .logo { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 0.95rem; letter-spacing: -0.02em; margin-bottom: 12px; }
+    .logo-icon { width: 30px; height: 30px; background: linear-gradient(135deg, var(--accent2), var(--accent)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); margin-left: 2px; transition: background 0.3s; flex-shrink: 0; }
+    .status-dot.connected { background: var(--accent2); box-shadow: 0 0 5px var(--accent2); }
+    #new-chat-btn { width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: var(--font); font-size: 0.83rem; padding: 9px 12px; border-radius: 9px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.15s; font-weight: 500; }
+    #new-chat-btn:hover { background: var(--surface2); border-color: var(--accent2); color: var(--accent2); }
+    .sidebar-section-label { padding: 12px 14px 4px; font-size: 0.7rem; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; }
+    #chat-list { flex: 1; overflow-y: auto; padding: 4px 8px 12px; }
+    #chat-list::-webkit-scrollbar { width: 4px; }
+    #chat-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .chat-item { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 9px; cursor: pointer; transition: all 0.12s; color: var(--text-muted); font-size: 0.83rem; position: relative; }
+    .chat-item:hover { background: var(--surface); color: var(--text); }
+    .chat-item.active { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .chat-item .chat-icon { font-size: 13px; flex-shrink: 0; }
+    .chat-item .chat-title { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.82rem; }
+    .chat-item .delete-btn { opacity: 0; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 2px 4px; border-radius: 4px; transition: all 0.12s; flex-shrink: 0; }
+    .chat-item:hover .delete-btn { opacity: 1; }
+    .chat-item .delete-btn:hover { color: var(--danger); background: rgba(248,81,73,0.1); }
+
+    /* ── Main ── */
+    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+    #topbar { display: flex; align-items: center; justify-content: flex-end; padding: 12px 20px; border-bottom: 1px solid var(--border); background: rgba(13,15,18,0.85); backdrop-filter: blur(12px); position: relative; z-index: 10; gap: 10px; }
+    .model-select-wrapper { display: flex; align-items: center; gap: 7px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; font-size: 0.8rem; color: var(--text-muted); }
+    .model-select-wrapper select { background: none; border: none; color: var(--text); font-family: var(--font); font-size: 0.8rem; outline: none; cursor: pointer; }
+    .model-select-wrapper select option { background: var(--surface2); }
+
+    /* ── Chat area ── */
+    #chat-container { flex: 1; overflow-y: auto; padding: 28px 0; position: relative; z-index: 1; scroll-behavior: smooth; }
+    #chat-container::-webkit-scrollbar { width: 6px; }
+    #chat-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .messages-wrapper { max-width: 740px; margin: 0 auto; padding: 0 20px; display: flex; flex-direction: column; gap: 8px; }
+
+    /* Welcome */
+    #welcome { max-width: 520px; margin: 50px auto; text-align: center; padding: 0 20px; animation: fadeUp 0.5s ease both; }
+    #welcome .big-icon { width: 60px; height: 60px; background: linear-gradient(135deg, var(--accent2), var(--accent)); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 26px; margin: 0 auto 18px; box-shadow: 0 0 40px rgba(63,185,80,0.15); }
+    #welcome h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.03em; margin-bottom: 10px; }
+    #welcome p { color: var(--text-muted); font-size: 0.88rem; line-height: 1.7; margin-bottom: 26px; }
+    .suggestion-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .suggestion-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 15px; text-align: left; cursor: pointer; transition: all 0.15s; font-family: var(--font); color: var(--text); }
+    .suggestion-card:hover { border-color: var(--accent2); background: var(--surface2); transform: translateY(-2px); }
+    .suggestion-card .s-icon { font-size: 1.1rem; margin-bottom: 5px; display: block; }
+    .suggestion-card .s-text { font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; }
+
+    /* Messages */
+    .message { display: flex; gap: 12px; animation: fadeUp 0.25s ease both; }
+    .message.user { flex-direction: row-reverse; }
+    .avatar { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; }
+    .avatar.ai { background: linear-gradient(135deg, var(--accent2), var(--accent)); }
+    .avatar.user { background: var(--user-bubble); border: 1px solid var(--accent); color: var(--accent); }
+    .bubble { max-width: 82%; padding: 11px 15px; border-radius: var(--radius); font-size: 0.9rem; line-height: 1.7; }
+    .message.user .bubble { background: var(--user-bubble); border: 1px solid rgba(88,166,255,0.2); border-bottom-right-radius: 4px; }
+    .message.ai .bubble { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+    .bubble p { margin-bottom: 0.7em; } .bubble p:last-child { margin-bottom: 0; }
+    .bubble h1,.bubble h2,.bubble h3 { font-weight: 600; margin: 1em 0 0.4em; }
+    .bubble h3 { color: var(--accent2); font-size: 0.95rem; }
+    .bubble ul,.bubble ol { padding-left: 1.4em; margin-bottom: 0.7em; } .bubble li { margin-bottom: 0.25em; }
+    .bubble code { font-family: var(--mono); font-size: 0.82em; background: rgba(63,185,80,0.1); color: var(--accent2); padding: 2px 6px; border-radius: 5px; }
+    .bubble pre { background: #0d1117; border: 1px solid var(--border); border-radius: 10px; margin: 0.7em 0; overflow: hidden; }
+    .bubble pre .code-header { display: flex; align-items: center; justify-content: space-between; padding: 7px 13px; background: var(--surface2); border-bottom: 1px solid var(--border); font-size: 0.73rem; color: var(--text-muted); font-family: var(--mono); }
+    .bubble pre code { background: none; color: inherit; padding: 13px; display: block; overflow-x: auto; font-size: 0.81rem; line-height: 1.6; }
+    .copy-code-btn { background: none; border: 1px solid var(--border); color: var(--text-muted); font-size: 0.68rem; padding: 2px 7px; border-radius: 4px; cursor: pointer; font-family: var(--font); transition: all 0.12s; }
+    .copy-code-btn:hover { color: var(--accent2); border-color: var(--accent2); }
+    .bubble blockquote { border-left: 3px solid var(--accent2); padding-left: 12px; color: var(--text-muted); font-style: italic; margin: 0.7em 0; }
+    .bubble strong { font-weight: 600; } .bubble a { color: var(--accent); text-decoration: none; }
+    .bubble table { width: 100%; border-collapse: collapse; margin: 0.7em 0; font-size: 0.84rem; }
+    .bubble th { background: var(--surface2); padding: 7px 11px; text-align: left; font-weight: 600; border: 1px solid var(--border); }
+    .bubble td { padding: 7px 11px; border: 1px solid var(--border); }
+
+    /* Typing */
+    .typing-indicator { display: flex; align-items: center; gap: 5px; padding: 12px 15px; }
+    .typing-dot { width: 6px; height: 6px; background: var(--accent2); border-radius: 50%; animation: typingBounce 1.2s ease infinite; }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; opacity: 0.7; } .typing-dot:nth-child(3) { animation-delay: 0.4s; opacity: 0.4; }
+
+    /* Input */
+    #input-area { padding: 14px 20px 18px; border-top: 1px solid var(--border); background: rgba(13,15,18,0.9); backdrop-filter: blur(12px); position: relative; z-index: 10; }
+    .input-wrapper { max-width: 740px; margin: 0 auto; position: relative; }
+    #user-input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font); font-size: 0.9rem; padding: 13px 52px 13px 16px; resize: none; outline: none; transition: border-color 0.15s; line-height: 1.6; max-height: 180px; overflow-y: auto; }
+    #user-input:focus { border-color: var(--accent2); }
+    #user-input::placeholder { color: var(--text-muted); }
+    #send-btn { position: absolute; right: 9px; bottom: 9px; width: 34px; height: 34px; background: var(--accent2); border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; color: #0d1117; }
+    #send-btn:hover { filter: brightness(1.15); transform: scale(1.05); }
+    #send-btn:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; transform: none; }
+    #send-btn svg { width: 15px; height: 15px; }
+    .input-footer { text-align: center; font-size: 0.7rem; color: var(--text-muted); margin-top: 8px; }
+    .input-footer span { color: var(--accent2); }
+
+    .streaming-cursor::after { content: '▋'; animation: blink 0.7s steps(1) infinite; color: var(--accent2); font-size: 0.85em; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes typingBounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-5px); } }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+  </style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">
+      <div class="logo-icon">🦙</div>
+      本地 AI 助理
+      <span class="status-dot" id="status-dot"></span>
+    </div>
+    <button id="new-chat-btn" onclick="newChat()">✏️ 新對話</button>
+  </div>
+  <div class="sidebar-section-label">對話記錄</div>
+  <div id="chat-list"></div>
+</div>
+
+<div id="main">
+  <div id="topbar">
+    <div class="model-select-wrapper">
+      🤖
+      <select id="model-select">
+        <option value="llama3.2">llama3.2</option>
+        <option value="llama3.1">llama3.1</option>
+        <option value="gemma3">gemma3</option>
+        <option value="mistral">mistral</option>
+        <option value="qwen2.5">qwen2.5</option>
+        <option value="phi4">phi4</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="chat-container">
+    <div class="messages-wrapper" id="messages"></div>
+  </div>
+
+  <div id="input-area">
+    <div class="input-wrapper">
+      <textarea id="user-input" placeholder="輸入訊息… (Enter 送出，Shift+Enter 換行)" rows="1"></textarea>
+      <button id="send-btn" onclick="sendMessage()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+      </button>
+    </div>
+    <div class="input-footer">完全本地端 · 由 <span>Ollama</span> 驅動</div>
+  </div>
+</div>
+
+<script>
+  const OLLAMA_URL = 'http://localhost:11434';
+  let chats = [];
+  let currentChatId = null;
+  let isStreaming = false;
+
+  function init() {
+    const saved = localStorage.getItem('ollama_chats');
+    if (saved) chats = JSON.parse(saved);
+    if (chats.length === 0) newChat();
+    else switchChat(chats[0].id);
+    checkOllamaStatus();
+    setInterval(checkOllamaStatus, 10000);
+  }
+
+  function save() { localStorage.setItem('ollama_chats', JSON.stringify(chats)); }
+
+  function newChat() {
+    const id = 'chat_' + Date.now();
+    chats.unshift({ id, title: '新對話', messages: [] });
+    save();
+    switchChat(id);
+  }
+
+  function switchChat(id) {
+    currentChatId = id;
+    renderChatList();
+    renderMessages();
+  }
+
+  function currentChat() { return chats.find(c => c.id === currentChatId); }
+
+  function deleteChat(e, id) {
+    e.stopPropagation();
+    chats = chats.filter(c => c.id !== id);
+    save();
+    if (currentChatId === id) {
+      if (chats.length === 0) newChat();
+      else switchChat(chats[0].id);
+    } else renderChatList();
+  }
+
+  function renderChatList() {
+    const list = document.getElementById('chat-list');
+    list.innerHTML = '';
+    chats.forEach(chat => {
+      const div = document.createElement('div');
+      div.className = 'chat-item' + (chat.id === currentChatId ? ' active' : '');
+      div.onclick = () => switchChat(chat.id);
+      div.innerHTML = `
+        <span class="chat-icon">💬</span>
+        <span class="chat-title">${escapeHtml(chat.title)}</span>
+        <button class="delete-btn" onclick="deleteChat(event,'${chat.id}')" title="刪除">✕</button>`;
+      list.appendChild(div);
+    });
+  }
+
+  function renderMessages() {
+    const chat = currentChat();
+    const wrapper = document.getElementById('messages');
+    wrapper.innerHTML = '';
+    if (!chat || chat.messages.length === 0) {
+      wrapper.innerHTML = `
+        <div id="welcome">
+          <div class="big-icon">🦙</div>
+          <h1>開始新的對話</h1>
+          <p>選一個建議問題，或直接輸入你想問的。</p>
+          <div class="suggestion-grid">
+            <button class="suggestion-card" onclick="suggest('幫我寫一個 Python Hello World 並逐行解釋')">
+              <span class="s-icon">💻</span><span class="s-text">Python Hello World 並解釋</span>
+            </button>
+            <button class="suggestion-card" onclick="suggest('用繁體中文解釋什麼是機器學習，給初學者看的')">
+              <span class="s-icon">🤖</span><span class="s-text">什麼是機器學習？</span>
+            </button>
+            <button class="suggestion-card" onclick="suggest('幫我列出 5 個提升程式開發效率的技巧')">
+              <span class="s-icon">⚡</span><span class="s-text">5 個提升開發效率的技巧</span>
+            </button>
+            <button class="suggestion-card" onclick="suggest('幫我用中文寫一首關於程式設計師的短詩')">
+              <span class="s-icon">🌸</span><span class="s-text">寫一首關於程式設計師的詩</span>
+            </button>
+          </div>
+        </div>`;
+      return;
+    }
+    chat.messages.forEach(msg => {
+      const div = document.createElement('div');
+      div.className = `message ${msg.role === 'user' ? 'user' : 'ai'}`;
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      if (msg.role === 'user') {
+        bubble.textContent = msg.content;
+      } else {
+        bubble.innerHTML = parseMarkdown(msg.content);
+        bubble.querySelectorAll('pre code').forEach(b => { hljs.highlightElement(b); addCodeHeader(b); });
+      }
+      div.innerHTML = msg.role === 'user'
+        ? `<div class="avatar user">我</div>`
+        : `<div class="avatar ai">🦙</div>`;
+      div.appendChild(bubble);
+      wrapper.appendChild(div);
+    });
+    scrollToBottom();
+  }
+
+  function suggest(text) {
+    const ta = document.getElementById('user-input');
+    ta.value = text; ta.dispatchEvent(new Event('input')); sendMessage();
+  }
+
+  async function sendMessage() {
+    const ta = document.getElementById('user-input');
+    const text = ta.value.trim();
+    if (!text || isStreaming) return;
+    const chat = currentChat();
+    if (!chat) return;
+
+    document.getElementById('welcome')?.remove();
+    chat.messages.push({ role: 'user', content: text });
+    if (chat.messages.length === 1) {
+      chat.title = text.slice(0, 28) + (text.length > 28 ? '…' : '');
+      renderChatList();
+    }
+    save();
+    appendUserMsg(text);
+    ta.value = ''; ta.style.height = 'auto';
+    isStreaming = true;
+    document.getElementById('send-btn').disabled = true;
+
+    const model = document.getElementById('model-select').value;
+    const tid = showTyping();
+    try {
+      const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages: chat.messages, stream: true })
+      });
+      removeTyping(tid);
+      if (!res.ok) throw new Error(`Ollama 回應錯誤 (${res.status})`);
+
+      const aiEl = createAIEl();
+      let fullText = '';
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const line of dec.decode(value, { stream: true }).split('\n').filter(l => l.trim())) {
+          try {
+            const p = JSON.parse(line);
+            if (p.message?.content) { fullText += p.message.content; renderStream(aiEl, fullText, !p.done); }
+          } catch {}
+        }
+      }
+      renderStream(aiEl, fullText, false);
+      chat.messages.push({ role: 'assistant', content: fullText });
+      save();
+    } catch (err) {
+      removeTyping(tid);
+      const wrapper = document.getElementById('messages');
+      const div = document.createElement('div');
+      div.className = 'message ai';
+      div.innerHTML = `<div class="avatar ai">🦙</div><div class="bubble" style="color:var(--danger)">❌ 錯誤：${escapeHtml(err.message)}<br/><small style="color:var(--text-muted)">請執行：<code>OLLAMA_ORIGINS="*" ollama serve</code></small></div>`;
+      wrapper.appendChild(div); scrollToBottom();
+    }
+    isStreaming = false;
+    document.getElementById('send-btn').disabled = false;
+    ta.focus();
+  }
+
+  function appendUserMsg(text) {
+    const div = document.createElement('div');
+    div.className = 'message user';
+    div.innerHTML = `<div class="avatar user">我</div><div class="bubble">${escapeHtml(text)}</div>`;
+    document.getElementById('messages').appendChild(div); scrollToBottom();
+  }
+
+  function createAIEl() {
+    const wrapper = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'message ai';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble streaming-cursor';
+    div.innerHTML = `<div class="avatar ai">🦙</div>`;
+    div.appendChild(bubble); wrapper.appendChild(div); scrollToBottom();
+    return bubble;
+  }
+
+  function renderStream(el, text, streaming) {
+    streaming ? el.classList.add('streaming-cursor') : el.classList.remove('streaming-cursor');
+    el.innerHTML = parseMarkdown(text);
+    el.querySelectorAll('pre code').forEach(b => { hljs.highlightElement(b); addCodeHeader(b); });
+    scrollToBottom();
+  }
+
+  function addCodeHeader(block) {
+    const pre = block.parentElement;
+    if (pre.querySelector('.code-header')) return;
+    const lang = [...block.classList].find(c => c.startsWith('language-'))?.replace('language-', '') || 'code';
+    const h = document.createElement('div');
+    h.className = 'code-header';
+    h.innerHTML = `<span>${lang}</span><button class="copy-code-btn" onclick="copyCode(this)">複製</button>`;
+    pre.insertBefore(h, block);
+  }
+
+  function copyCode(btn) {
+    navigator.clipboard.writeText(btn.closest('pre').querySelector('code').textContent)
+      .then(() => { btn.textContent = '已複製！'; setTimeout(() => btn.textContent = '複製', 2000); });
+  }
+
+  function showTyping() {
+    const id = 'typing-' + Date.now();
+    const div = document.createElement('div');
+    div.className = 'message ai'; div.id = id;
+    div.innerHTML = `<div class="avatar ai">🦙</div><div class="bubble"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>`;
+    document.getElementById('messages').appendChild(div); scrollToBottom();
+    return id;
+  }
+
+  function removeTyping(id) { document.getElementById(id)?.remove(); }
+  function parseMarkdown(t) { marked.setOptions({ breaks: true, gfm: true }); return marked.parse(t); }
+  function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function scrollToBottom() { const c = document.getElementById('chat-container'); c.scrollTop = c.scrollHeight; }
+
+  async function checkOllamaStatus() {
+    try {
+      const res = await fetch(`${OLLAMA_URL}/api/tags`);
+      if (res.ok) {
+        const data = await res.json();
+        document.getElementById('status-dot').classList.add('connected');
+        if (data.models?.length > 0) {
+          const sel = document.getElementById('model-select');
+          const cur = sel.value;
+          sel.innerHTML = '';
+          data.models.forEach(m => {
+            const o = document.createElement('option');
+            o.value = m.name; o.textContent = m.name;
+            if (m.name === cur) o.selected = true;
+            sel.appendChild(o);
+          });
+        }
+      } else throw new Error();
+    } catch { document.getElementById('status-dot').classList.remove('connected'); }
+  }
+
+  const ta = document.getElementById('user-input');
+  ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 180) + 'px'; });
+  ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!isStreaming) sendMessage(); } });
+
+  init();
+</script>
+</body>
+</html>
