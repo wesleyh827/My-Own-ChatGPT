@@ -1,10 +1,10 @@
-# 🦙 本地 AI 助理
+# 本地 AI 助理
 
-一個基於 [Ollama](https://ollama.com) 的本地端 AI 聊天網頁，所有對話完全在你的電腦上處理，不需要 API Key，不需要網路，資料不會離開你的電腦。
+一個基於 [Ollama](https://ollama.com) 的本地端 AI 聊天網頁，所有對話完全在電腦上處理，不需要 API Key，不需要網路，資料不會離開電腦。
 
 ---
 
-## ✨ 功能特色
+## 功能特色
 
 - **Word Streaming**：AI 回應逐字顯示，就像 ChatGPT 一樣
 - **多輪對話記憶**：每次送出都帶上完整的對話歷史
@@ -17,7 +17,7 @@
 
 ---
 
-## 🚀 安裝與使用
+## 安裝與使用
 
 ### 第一步：安裝 Ollama
 
@@ -65,21 +65,21 @@ python3 -m http.server 8080
 用瀏覽器前往：
 
 ```
-http://localhost:8080/ollama-chat.html
+http://localhost:8080/chatgpt-clone.html
 ```
 
 ---
 
-## 📁 檔案結構
+## 檔案結構
 
 ```
 .
-└── ollama-chat.html   # 主程式（單一檔案，包含所有 HTML / CSS / JS）
+└── chatgpt-clone.html   # 主程式（單一檔案，包含所有 HTML / CSS / JS）
 ```
 
 ---
 
-## 🛠 使用技術
+## 使用技術
 
 | 技術 | 用途 |
 |------|------|
@@ -91,13 +91,10 @@ http://localhost:8080/ollama-chat.html
 
 ---
 
-## ⚠️ 常見問題
+## 常見問題
 
 **Q：左上角一直是紅燈？**
 確認已執行 `OLLAMA_ORIGINS="*" ollama serve`，且沒有用直接點兩下開 HTML（要透過 `http://localhost:8080`）。
 
 **Q：回應是簡體中文？**
 切換到 `qwen2.5` 模型，對繁體中文的支援比 llama 好很多。
-
-**Q：出現 `Load failed` 錯誤？**
-沒有加 `OLLAMA_ORIGINS="*"` 啟動 Ollama，瀏覽器會因為 CORS 政策擋住請求。
